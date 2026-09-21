@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>木乃伊迷宫 · Jev 实验室</title>
+  <link rel="stylesheet" href="/public/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MUMMY MAZE · JEV LAB</p>
+        <h1>木乃伊迷宫</h1>
+        <p id="level-name">第一关</p>
+      </div>
+      <div class="actions">
+        <button id="restart-button" type="button">重开本关</button>
+        <button id="ai-button" type="button" class="primary">AI 自动</button>
+      </div>
+    </header>
+
+    <section class="game-column">
+      <div class="canvas-frame">
+        <canvas id="game-canvas" width="720" height="720" aria-label="木乃伊迷宫棋盘"></canvas>
+      </div>
+      <p id="game-message" class="game-message">使用方向键移动探险家</p>
+    </section>
+
+    <aside class="metrics-panel">
+      <section class="status-grid">
+        <div><span>状态</span><strong id="ai-status">手动</strong></div>
+        <div><span>回合</span><strong id="turn-count">0</strong></div>
+        <div><span>用时</span><strong id="elapsed-time">00:00</strong></div>
+      </section>
+
+      <section id="decision-card" class="panel decision-card">
+        <div class="panel-heading">
+          <p class="eyebrow">JEV JUDGEMENT</p>
+          <span id="decision-time">等待判断</span>
+        </div>
+        <h2>现在是否应该优先靠近出口？</h2>
+        <div id="yes-no-row" class="probability-row">
+          <div class="probability-item muted"><span>Yes</span><strong>--</strong></div>
+          <div class="probability-item muted"><span>No</span><strong>--</strong></div>
+        </div>
+        <h3>最佳动作</h3>
+        <div id="direction-probabilities" class="probability-list">
+          <div class="probability-item muted"><span>上</span><strong>--</strong></div>
+          <div class="probability-item muted"><span>下</span><strong>--</strong></div>
+          <div class="probability-item muted"><span>左</span><strong>--</strong></div>
+          <div class="probability-item muted"><span>右</span><strong>--</strong></div>
+        </div>
+        <p id="final-action" class="final-action">尚未执行动作</p>
+      </section>
+
+      <section class="summary-grid">
+        <div><span>平均置信度</span><strong id="average-confidence">--</strong></div>
+        <div><span>平均耗时</span><strong id="average-latency">--</strong></div>
+        <div><span>总 Token</span><strong id="total-tokens">0</strong></div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-heading">
+          <h2>本关记录</h2>
+          <button id="export-button" type="button">导出 JSON</button>
+        </div>
+        <ol id="decision-history" class="decision-history"></ol>
+      </section>
+    </aside>
+  </main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
