@@ -285,5 +285,3 @@ window.setInterval(() => {
 }, 500);
 
 loadLevel(0, { keepAi: false });
-
-
