@@ -216,6 +216,40 @@ test('没有合法动作时不调用 Jev 并返回 422', async () => {
   }
 });
 
+test('Jev 503 会短期重试后成功', async () => {
+  let attempts = 0;
+  const scorer = createJevScorer({
+    apiKey: 'test-key',
+    fetcher: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response(JSON.stringify({ detail: 'temporarily unavailable' }), {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({
+        model: 'jev-1.13.0',
+        answers: {
+          right_score: {
+            type: 'score',
+            score: 4,
+            confidence: 0.8,
+            probabilities: { 4: 0.8, 5: 0.2 },
+            legend: { 4: '好', 5: '最好' },
+          },
+        },
+        usage: { input_tokens: 8, output_tokens: 2 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    },
+    sleep: async () => {},
+  });
+
+  const result = await scorer({ questions: {} }, ['right']);
+  assert.equal(result.scores.right.score, 4);
+  assert.equal(attempts, 2);
+});
+
 test('Jev 读取响应超时映射为 JEV_TIMEOUT', async () => {
   const scorer = createJevScorer({
     apiKey: 'test-key',

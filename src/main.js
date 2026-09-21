@@ -180,6 +180,9 @@ function handleOutcome(result) {
     message.textContent = reason === 'trap' ? '踩中陷阱，已失败' : '被怪物抓住，已失败';
   } else if (!result.accepted) {
     message.textContent = '这个方向无法移动';
+  } else {
+    message.textContent = aiEnabled ? '继续判断' : '继续行动';
+    message.classList.remove('error');
   }
 }
 
@@ -230,6 +233,7 @@ function errorMessage(error) {
   if (error.code === 'DEEPSEEK_NOT_CONFIGURED') return 'DeepSeek 未配置，AI 已暂停';
   if (error.code === 'DEEPSEEK_TIMEOUT' || error.status === 504) return 'DeepSeek 响应超时，AI 已暂停';
   if (error.code === 'JEV_TIMEOUT') return 'Jev 响应超时，AI 已暂停';
+  if (error.code === 'JEV_UPSTREAM_ERROR' && (error.status === 503 || error.status === 529)) return 'Jev 服务暂时不可用，请稍后重试';
   if (error.status === 422) return error.message || '请求校验失败，AI 已暂停';
   if (error.status === 429) return '请求过于频繁，请稍后重试';
   return error.message || '决策请求失败，AI 已暂停';
@@ -243,6 +247,7 @@ async function runAiTurn() {
   aiButton.disabled = true;
   aiButton.textContent = '分析中…';
   aiStatus.textContent = 'DeepSeek 分析中';
+  message.textContent = 'DeepSeek 正在分析局面…';
   message.classList.remove('error');
   try {
     const decision = await requestJevDecision(createSnapshot(state));

@@ -23,6 +23,8 @@ export function createJevScorer({
   apiKey = process.env.OMNILABS_API_KEY,
   baseUrl = process.env.OMNILABS_BASE_URL || DEFAULT_BASE_URL,
   timeoutMs = Number(process.env.JEV_TIMEOUT_MS || 20_000),
+  retryDelaysMs = [500, 1500, 3000, 6000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   return async (payload, legalDirections) => {
     if (!apiKey) {
@@ -31,32 +33,40 @@ export function createJevScorer({
 
     let response;
     let text;
-    try {
-      response = await fetcher(`${baseUrl.replace(/\/$/, '')}/v1/systemone`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      text = await response.text();
-    } catch (error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-        throw createError('JEV_TIMEOUT', 'Jev 响应超时', 504);
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+      try {
+        response = await fetcher(`${baseUrl.replace(/\/$/, '')}/v1/systemone`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        text = await response.text();
+      } catch (error) {
+        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+          throw createError('JEV_TIMEOUT', 'Jev 响应超时', 504);
+        }
+        throw error;
       }
-      throw error;
-    }
-    if (!response.ok) {
+
+      if (response.ok) break;
+
       let message = text.slice(0, 500);
       try {
         const body = JSON.parse(text);
-        message = body.message || body.error?.message || message;
+        message = body.message || body.error?.message || body.detail || message;
       } catch {
         // 保留原始错误文本
       }
-      throw createError('JEV_UPSTREAM_ERROR', message || 'Jev 请求失败', response.status);
+
+      const retryable = response.status === 503 || response.status === 529;
+      if (!retryable || attempt === retryDelaysMs.length) {
+        throw createError('JEV_UPSTREAM_ERROR', message || 'Jev 请求失败', response.status);
+      }
+      await sleep(retryDelaysMs[attempt]);
     }
 
     let body;
