@@ -1,5 +1,5 @@
 export async function requestJevDecision(snapshot) {
-  const response = await fetch('/api/jev/decide', {
+  const response = await fetch('/api/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(snapshot),

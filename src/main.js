@@ -59,8 +59,8 @@ function renderSummary() {
 
 function resetDecisionCard() {
   document.querySelector('#yes-no-row').innerHTML = `
-    <div class="probability-item muted"><span>Yes</span><strong>--</strong></div>
-    <div class="probability-item muted"><span>No</span><strong>--</strong></div>
+    <div class="probability-item muted"><span>最高分</span><strong>--</strong></div>
+    <div class="probability-item muted"><span>置信度</span><strong>--</strong></div>
   `;
   document.querySelector('#direction-probabilities').innerHTML = `
     <div class="probability-item muted"><span>上</span><strong>--</strong></div>
@@ -80,35 +80,56 @@ function showState() {
   renderGame(canvas, state);
 }
 
+function formatScore(value) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '--';
+}
+
 function renderDecision(decision) {
-  document.querySelector('#yes-no-row').innerHTML = `
-    <div class="probability-item"><span>Yes</span><strong>${percent(decision.yesProbability)}</strong></div>
-    <div class="probability-item"><span>No</span><strong>${percent(decision.noProbability)}</strong></div>
-  `;
   const labels = { up: '上', down: '下', left: '左', right: '右' };
+  document.querySelector('#yes-no-row').innerHTML = `
+    <div class="probability-item best"><span>最高分</span><strong>${formatScore(decision.score)} / 5</strong></div>
+    <div class="probability-item"><span>置信度</span><strong>${percent(decision.confidence)}</strong></div>
+  `;
   document.querySelector('#direction-probabilities').innerHTML = Object.entries(labels)
-    .map(([direction, label]) => `
-      <div class="probability-item ${direction === decision.direction ? 'best' : ''}">
-        <span>${label}</span>
-        <strong>${percent(decision.probabilities?.[direction])}</strong>
-      </div>
-    `)
+    .map(([direction, label]) => {
+      const item = decision.scores?.[direction];
+      const value = item ? `${formatScore(item.score)} / ${percent(item.confidence)}` : '--';
+      return `
+        <div class="probability-item ${direction === decision.direction ? 'best' : ''}">
+          <span>${label}</span>
+          <strong>${value}</strong>
+        </div>
+      `;
+    })
     .join('');
   document.querySelector('#final-action').textContent =
-    `最终执行：${labels[decision.direction]}（${percent(decision.confidence)}）`;
+    `最终执行：${labels[decision.direction]}（${formatScore(decision.score)} / 5，置信度 ${percent(decision.confidence)}）`;
   document.querySelector('#decision-time').textContent = `${decision.latencyMs} ms`;
+}
+
+function usageTokens(usage) {
+  return Number(usage?.input_tokens || usage?.prompt_tokens || 0)
+    + Number(usage?.output_tokens || usage?.completion_tokens || 0);
 }
 
 function appendDecisionHistory(decision) {
   const labels = { up: '上', down: '下', left: '左', right: '右' };
-  const tokens = Number(decision.usage?.input_tokens || 0) + Number(decision.usage?.output_tokens || 0);
+  const tokens = usageTokens(decision.analysisUsage)
+    + usageTokens(decision.scoringUsage)
+    + usageTokens(decision.usage);
+  const scores = Object.entries(labels)
+    .map(([direction, label]) => {
+      const item = decision.scores?.[direction];
+      return `${label} ${item ? formatScore(item.score) : '--'}`;
+    })
+    .join(' · ');
   const item = document.createElement('li');
   item.textContent = [
     `第 ${decision.turn} 回合`,
-    `${labels[decision.direction] || decision.direction}`,
-    `Yes ${percent(decision.yesProbability)} / No ${percent(decision.noProbability)}`,
-    `上 ${percent(decision.probabilities?.up)} 下 ${percent(decision.probabilities?.down)} 左 ${percent(decision.probabilities?.left)} 右 ${percent(decision.probabilities?.right)}`,
+    `最终 ${labels[decision.direction] || decision.direction}`,
+    `最高分 ${formatScore(decision.score)}`,
     `置信度 ${percent(decision.confidence)}`,
+    scores,
     `${decision.latencyMs} ms`,
     `${tokens} token`,
     decision.result,
@@ -199,10 +220,13 @@ function loadLevel(index, { keepAi = false } = {}) {
 
 function errorMessage(error) {
   if (error.status === 401) return 'API Key 无效，AI 已暂停';
-  if (error.status === 422) return 'Jev 请求校验失败，AI 已暂停';
-  if (error.status === 429) return 'Jev 请求过于频繁，请稍后重试';
-  if (error.status === 504 || error.code === 'JEV_TIMEOUT') return 'Jev 响应超时，AI 已暂停';
-  return error.message || 'Jev 请求失败，AI 已暂停';
+  if (error.status === 402 || error.code === 'DEEPSEEK_BALANCE_REQUIRED') return 'DeepSeek 余额不足，AI 已暂停';
+  if (error.code === 'DEEPSEEK_NOT_CONFIGURED') return 'DeepSeek 未配置，AI 已暂停';
+  if (error.code === 'DEEPSEEK_TIMEOUT' || error.status === 504) return 'DeepSeek 响应超时，AI 已暂停';
+  if (error.code === 'JEV_TIMEOUT') return 'Jev 响应超时，AI 已暂停';
+  if (error.status === 422) return error.message || '请求校验失败，AI 已暂停';
+  if (error.status === 429) return '请求过于频繁，请稍后重试';
+  return error.message || '决策请求失败，AI 已暂停';
 }
 
 async function runAiTurn() {
@@ -211,13 +235,13 @@ async function runAiTurn() {
 
   aiRequestInFlight = true;
   aiButton.disabled = true;
-  aiStatus.textContent = 'Jev 思考中';
+  aiStatus.textContent = 'DeepSeek 分析中';
   try {
     const decision = await requestJevDecision(createSnapshot(state));
     if (!aiEnabled || runToken !== aiRunToken) return;
 
     renderDecision(decision);
-    aiStatus.textContent = '执行 Jev 方向';
+    aiStatus.textContent = '执行最高分动作';
     const accepted = await performTurn(decision.direction);
     decision.levelId = state.levelId;
     decision.levelRunId = levelRunId;

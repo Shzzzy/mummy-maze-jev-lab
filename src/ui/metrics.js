@@ -20,6 +20,11 @@ export function recordLevelResult(metrics, result) {
   });
 }
 
+function usageTokens(usage) {
+  return Number(usage?.input_tokens || usage?.prompt_tokens || 0)
+    + Number(usage?.output_tokens || usage?.completion_tokens || 0);
+}
+
 export function summarizeMetrics(metrics) {
   const count = metrics.decisions.length;
   const totalConfidence = metrics.decisions.reduce(
@@ -32,8 +37,9 @@ export function summarizeMetrics(metrics) {
   );
   const totalTokens = metrics.decisions.reduce(
     (sum, item) => sum
-      + Number(item.usage?.input_tokens || 0)
-      + Number(item.usage?.output_tokens || 0),
+      + usageTokens(item.analysisUsage)
+      + usageTokens(item.scoringUsage)
+      + usageTokens(item.usage),
     0,
   );
 
