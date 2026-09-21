@@ -2,6 +2,7 @@ import { createGame, stepGame } from './engine/engine.js';
 import { LEVELS } from './engine/levels.js';
 import { createSnapshot } from './engine/snapshot.js';
 import { renderGame, animateEvents } from './ui/renderer.js';
+import { createTextState } from './ui/text-state.js';
 import { requestJevDecision } from './ui/jev-client.js';
 import {
   createExport,
@@ -31,6 +32,7 @@ let levelStartedAt = Date.now();
 let levelTimer = null;
 let levelResultRecorded = false;
 let levelRunId = 0;
+let lastDecision = null;
 
 function percent(value) {
   return `${Math.round(Number(value || 0) * 100)}%`;
@@ -70,6 +72,7 @@ function resetDecisionCard() {
   `;
   document.querySelector('#final-action').textContent = '尚未执行动作';
   document.querySelector('#decision-time').textContent = '等待判断';
+  lastDecision = null;
   history.replaceChildren();
   renderSummary();
 }
@@ -85,6 +88,7 @@ function formatScore(value) {
 }
 
 function renderDecision(decision) {
+  lastDecision = decision;
   const labels = { up: '上', down: '下', left: '左', right: '右' };
   document.querySelector('#yes-no-row').innerHTML = `
     <div class="probability-item best"><span>最高分</span><strong>${formatScore(decision.score)} / 5</strong></div>
@@ -307,5 +311,37 @@ window.setInterval(() => {
     elapsedTime.textContent = formatDuration(Date.now() - levelStartedAt);
   }
 }, 500);
+
+window.render_game_to_text = () => createTextState({
+  state,
+  aiStatus: aiStatus.textContent,
+  lastDecision,
+});
+
+const existingAdvanceTime = window.advanceTime;
+window.advanceTime = async (ms) => {
+  if (typeof existingAdvanceTime === 'function') {
+    await existingAdvanceTime(ms);
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
+
+async function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    await document.documentElement.requestFullscreen?.();
+  } else {
+    await document.exitFullscreen?.();
+  }
+  renderGame(canvas, state);
+}
+
+window.addEventListener('resize', () => renderGame(canvas, state));
+document.addEventListener('fullscreenchange', () => renderGame(canvas, state));
+document.addEventListener('keydown', (event) => {
+  if (event.key.toLowerCase() === 'f') {
+    toggleFullscreen();
+  }
+});
 
 loadLevel(0, { keepAi: false });
