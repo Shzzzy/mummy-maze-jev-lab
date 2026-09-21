@@ -68,7 +68,7 @@ export function getLegalDirections(snapshot) {
   });
 }
 
-export function buildJevScorePayload(facts, legalDirections) {
+export function buildJevScorePayload(facts, legalDirections, analysis = null) {
   if (!Array.isArray(legalDirections) || legalDirections.length === 0) {
     throw createError('NO_LEGAL_ACTION', '当前没有可评分动作');
   }
@@ -89,6 +89,7 @@ export function buildJevScorePayload(facts, legalDirections) {
     model: 'jev-latest',
     state: {
       facts,
+      ...(analysis ? { analysis } : {}),
       rules: [...FIXED_RULES],
       scoringDimensions: SCORING_DIMENSIONS.map((item) => ({ ...item })),
     },

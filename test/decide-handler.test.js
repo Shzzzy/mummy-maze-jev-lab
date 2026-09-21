@@ -53,10 +53,12 @@ test('决策接口选择最高分动作并返回完整上下文', async () => {
     decisionHandler: createDecisionHandler({
       analyze: async () => ({
         facts,
+        analysis: { summary: '中性分析', keyPoints: [] },
         usage: { prompt_tokens: 10, completion_tokens: 5 },
       }),
       score: async (payload, legalDirections) => {
         assert.equal(payload.state.facts, facts);
+        assert.equal(payload.state.analysis.summary, '中性分析');
         assert.deepEqual(legalDirections, ['right']);
         return scoreResult('right');
       },
@@ -77,6 +79,7 @@ test('决策接口选择最高分动作并返回完整上下文', async () => {
     assert.equal(body.analysisUsage.prompt_tokens, 10);
     assert.equal(body.scoringUsage.input_tokens, 30);
     assert.equal(body.facts.player.x, 1);
+    assert.equal(body.analysis.summary, '中性分析');
   } finally {
     server.close();
   }

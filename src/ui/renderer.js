@@ -135,12 +135,22 @@ function interpolate(from, to, progress) {
   };
 }
 
-async function animateMove(canvas, state, event, durationMs) {
+export function applyMoveEvent(state, event) {
+  const next = structuredClone(state);
+  if (event.entity === 'player') {
+    next.player = { ...event.to };
+    return next;
+  }
+  const monster = next.monsters.find((item) => item.id === event.entityId);
+  if (monster) Object.assign(monster, { ...event.to });
+  return next;
+}
+
+async function animateMove(canvas, display, event, durationMs) {
   const startedAt = performance.now();
   await new Promise((resolve) => {
     function frame(now) {
       const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
-      const display = structuredClone(state);
       if (event.entity === 'player') {
         display.player = interpolate(event.from, event.to, progress);
       } else {
@@ -155,11 +165,16 @@ async function animateMove(canvas, state, event, durationMs) {
   });
 }
 
-export async function animateEvents(canvas, state, events, durationMs = 180) {
+export async function animateEvents(canvas, initialState, events, durationMs = 180) {
+  const display = structuredClone(initialState);
   for (const event of events) {
     if (event.type === 'move') {
-      await animateMove(canvas, state, event, durationMs);
+      await animateMove(canvas, display, event, durationMs);
+      Object.assign(display, applyMoveEvent(display, event));
+    } else if (event.type === 'doors') {
+      display.doorsOpen = event.open;
+      renderGame(canvas, display);
     }
   }
-  renderGame(canvas, state);
+  renderGame(canvas, display);
 }

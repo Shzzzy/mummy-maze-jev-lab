@@ -3,6 +3,7 @@ const DEFAULT_MODEL = 'deepseek-chat';
 const FACT_KEYS = new Set(['player', 'monsters', 'exit', 'doorsOpen', 'adjacentTiles']);
 const POINT_KEYS = new Set(['x', 'y']);
 const MONSTER_KEYS = new Set(['id', 'type', 'x', 'y']);
+const ANALYSIS_FORBIDDEN_PHRASES = ['应该', '建议', '推荐', '最好', '优先选择', '下一步', '应当'];
 const FORBIDDEN_KEYS = new Set([
   'action',
   'actions',
@@ -114,6 +115,40 @@ function findExit(snapshot) {
   return null;
 }
 
+export function buildCanonicalFacts(snapshot) {
+  if (!snapshot || !snapshot.player || !Array.isArray(snapshot.tiles)) {
+    throw createError('INVALID_SNAPSHOT', '缺少合法游戏快照', 422);
+  }
+
+  const vectors = {
+    up: { x: 0, y: -1 },
+    down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 },
+  };
+  const adjacentTiles = {};
+  for (const [direction, vector] of Object.entries(vectors)) {
+    adjacentTiles[direction] = tileAt(
+      snapshot,
+      snapshot.player.x + vector.x,
+      snapshot.player.y + vector.y,
+    );
+  }
+
+  return {
+    player: { x: snapshot.player.x, y: snapshot.player.y },
+    monsters: (snapshot.monsters ?? []).map((monster) => ({
+      id: monster.id,
+      type: monster.type,
+      x: monster.x,
+      y: monster.y,
+    })),
+    exit: findExit(snapshot),
+    doorsOpen: Boolean(snapshot.doorsOpen),
+    adjacentTiles,
+  };
+}
+
 export function validateFactsAgainstSnapshot(facts, snapshot) {
   if (!snapshot || !snapshot.player || !Array.isArray(snapshot.tiles)) {
     throw createError('INVALID_SNAPSHOT', '缺少合法游戏快照', 422);
@@ -170,39 +205,67 @@ function stripCodeFence(content) {
     .trim();
 }
 
-export function buildDeepSeekMessages(snapshot) {
+export function buildDeepSeekMessages(snapshot, canonicalFacts = buildCanonicalFacts(snapshot)) {
   return [
     {
       role: 'system',
       content: [
-        '你是局面事实整理器，不是决策器。',
-        '只整理输入快照中的客观事实，并严格输出 JSON。',
-        '禁止输出任何方向建议、动作排名、动作评分、推荐动作或策略偏好。',
-        '不能修改游戏规则，不能补充输入中没有出现的事实。',
+        '你是局面分析器，不是决策器。',
+        '代码已经提供确定性的 canonicalFacts，你只能基于这些事实做中性分析。',
+        '严格输出 JSON，不要输出新的 facts，不要输出方向建议、动作排名、动作评分或推荐动作。',
+        'summary 和 keyPoints 只描述局面特征，禁止包含“应该”“建议”“推荐”“最好”“优先选择”“下一步”“走”。',
       ].join(''),
     },
     {
       role: 'user',
       content: JSON.stringify({
-        task: '整理当前局面，输出中性 facts。',
+        task: '基于 canonicalFacts 做中性局面分析，帮助后续评分聚焦当前局势。',
         output: {
-          facts: {
-            player: { x: 0, y: 0 },
-            monsters: [{ id: 'string', type: 'white|red|scorpion', x: 0, y: 0 }],
-            exit: { x: 0, y: 0 },
-            doorsOpen: true,
-            adjacentTiles: {
-              up: 'floor|wall|exit|trap|key|gate',
-              down: 'floor|wall|exit|trap|key|gate',
-              left: 'floor|wall|exit|trap|key|gate',
-              right: 'floor|wall|exit|trap|key|gate',
-            },
+          analysis: {
+            summary: '不含动作建议的中性局面描述',
+            keyPoints: ['不含动作建议的客观观察'],
           },
         },
+        canonicalFacts,
         snapshot,
       }),
     },
   ];
+}
+
+function validateNeutralAnalysisText(value) {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > 500) {
+    throw createError('DEEPSEEK_INVALID_ANALYSIS', 'DeepSeek 分析文本非法');
+  }
+  if (ANALYSIS_FORBIDDEN_PHRASES.some((phrase) => value.includes(phrase))) {
+    throw createError('DEEPSEEK_INVALID_ANALYSIS', 'DeepSeek 分析包含动作建议');
+  }
+}
+
+export function parseDeepSeekAnalysis(content) {
+  let payload;
+  try {
+    payload = JSON.parse(stripCodeFence(content));
+  } catch {
+    throw createError('DEEPSEEK_INVALID_ANALYSIS', 'DeepSeek 没有返回合法分析 JSON');
+  }
+
+  const analysis = payload?.analysis;
+  if (!analysis || typeof analysis !== 'object' || Array.isArray(analysis)) {
+    throw createError('DEEPSEEK_INVALID_ANALYSIS', 'DeepSeek 缺少 analysis');
+  }
+  validateNeutralAnalysisText(analysis.summary);
+  if (!Array.isArray(analysis.keyPoints) || analysis.keyPoints.length > 8) {
+    throw createError('DEEPSEEK_INVALID_ANALYSIS', 'DeepSeek keyPoints 非法');
+  }
+  for (const point of analysis.keyPoints) {
+    validateNeutralAnalysisText(point);
+  }
+
+  return {
+    summary: analysis.summary,
+    keyPoints: [...analysis.keyPoints],
+  };
 }
 
 export function parseDeepSeekFacts(content) {
@@ -266,9 +329,11 @@ export function createDeepSeekAnalyzer({
     }
 
     const content = body.choices?.[0]?.message?.content;
-    const facts = validateFactsAgainstSnapshot(parseDeepSeekFacts(content), snapshot);
+    const facts = buildCanonicalFacts(snapshot);
+    const analysis = parseDeepSeekAnalysis(content);
     return {
       facts,
+      analysis,
       model: body.model || model,
       usage: body.usage ?? {},
     };

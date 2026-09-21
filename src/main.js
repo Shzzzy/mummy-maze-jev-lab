@@ -187,9 +187,10 @@ async function performTurn(direction) {
   if (busy || state.status !== 'playing') return false;
   busy = true;
   try {
+    const previousState = state;
     const result = stepGame(state, direction);
     state = result.state;
-    await animateEvents(canvas, state, result.events);
+    await animateEvents(canvas, previousState, result.events);
     showState();
     handleOutcome(result);
     return result.accepted;
@@ -217,6 +218,7 @@ function loadLevel(index, { keepAi = false } = {}) {
   aiButton.textContent = aiEnabled ? '停止 AI' : 'AI 自动';
   aiStatus.textContent = aiEnabled ? '准备判断' : '手动';
   message.textContent = '使用方向键移动探险家';
+  message.classList.remove('error');
   resetDecisionCard();
   showState();
   if (aiEnabled) queueMicrotask(runAiTurn);
@@ -239,7 +241,9 @@ async function runAiTurn() {
 
   aiRequestInFlight = true;
   aiButton.disabled = true;
+  aiButton.textContent = '分析中…';
   aiStatus.textContent = 'DeepSeek 分析中';
+  message.classList.remove('error');
   try {
     const decision = await requestJevDecision(createSnapshot(state));
     if (!aiEnabled || runToken !== aiRunToken) return;
@@ -264,10 +268,12 @@ async function runAiTurn() {
       aiButton.textContent = 'AI 自动';
       aiStatus.textContent = '已暂停';
       message.textContent = errorMessage(error);
+      message.classList.add('error');
     }
   } finally {
     aiRequestInFlight = false;
     aiButton.disabled = false;
+    aiButton.textContent = aiEnabled ? '停止 AI' : 'AI 自动';
     if (aiEnabled && runToken === aiRunToken && state.status === 'playing') {
       queueMicrotask(runAiTurn);
     }

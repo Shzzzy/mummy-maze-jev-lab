@@ -38,12 +38,13 @@ test('合法性过滤排除墙和关闭闸门', () => {
 });
 
 test('Jev 评分请求只包含合法动作并注入固定规则与维度', () => {
-  const payload = buildJevScorePayload({ player: { x: 1, y: 1 } }, ['up', 'right']);
+  const payload = buildJevScorePayload({ player: { x: 1, y: 1 } }, ['up', 'right'], { summary: '中性分析', keyPoints: [] });
   assert.deepEqual(Object.keys(payload.questions), ['up_score', 'right_score']);
   assert.equal(payload.questions.up_score.type, 'score');
   assert.deepEqual(payload.questions.up_score.criteria, SCORE_CRITERIA);
   assert.deepEqual(payload.state.rules, FIXED_RULES);
   assert.deepEqual(payload.state.scoringDimensions, SCORING_DIMENSIONS);
+  assert.equal(payload.state.analysis.summary, '中性分析');
 });
 
 test('解析 Jev 评分并归一化', () => {

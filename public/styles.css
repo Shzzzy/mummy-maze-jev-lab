@@ -124,3 +124,5 @@ html:fullscreen .canvas-frame {
   border-radius: 0;
   box-shadow: none;
 }
+
+.game-message.error { color: #ff9b8a; font-weight: 700; }

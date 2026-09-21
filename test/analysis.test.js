@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   buildDeepSeekMessages,
   createDeepSeekAnalyzer,
+  parseDeepSeekAnalysis,
   parseDeepSeekFacts,
+  buildCanonicalFacts,
   validateFactsAgainstSnapshot,
 } from '../server/analysis.js';
 
@@ -47,6 +49,36 @@ test('DeepSeek 提示词包含快照并要求只输出中性事实', () => {
 test('解析 DeepSeek 返回的合法事实 JSON', () => {
   const facts = parseDeepSeekFacts(JSON.stringify({ facts: validFacts }));
   assert.deepEqual(facts, validFacts);
+});
+
+test('代码生成确定性事实', () => {
+  const facts = buildCanonicalFacts(matchingSnapshot);
+  assert.deepEqual(facts.player, { x: 1, y: 2 });
+  assert.deepEqual(facts.exit, { x: 5, y: 2 });
+  assert.equal(facts.adjacentTiles.right, 'trap');
+});
+
+test('解析 DeepSeek 中性分析', () => {
+  const analysis = parseDeepSeekAnalysis(JSON.stringify({
+    analysis: {
+      summary: '出口与陷阱同时出现在玩家附近',
+      keyPoints: ['陷阱位于右侧相邻格'],
+    },
+  }));
+  assert.equal(analysis.summary, '出口与陷阱同时出现在玩家附近');
+  assert.deepEqual(analysis.keyPoints, ['陷阱位于右侧相邻格']);
+});
+
+test('拒绝 DeepSeek 分析中的动作建议', () => {
+  assert.throws(
+    () => parseDeepSeekAnalysis(JSON.stringify({
+      analysis: {
+        summary: '建议向右移动',
+        keyPoints: [],
+      },
+    })),
+    (error) => error.code === 'DEEPSEEK_INVALID_ANALYSIS',
+  );
 });
 
 test('事实与快照一致时通过', () => {
@@ -103,7 +135,7 @@ test('DeepSeek 分析器发送正确请求并返回 facts 与 usage', async () =
       calls.push({ url, options });
       return new Response(JSON.stringify({
         model: 'deepseek-v4-flash',
-        choices: [{ message: { content: JSON.stringify({ facts: validFacts }) } }],
+        choices: [{ message: { content: JSON.stringify({ analysis: { summary: '当前局面没有怪物', keyPoints: [] } }) } }],
         usage: { prompt_tokens: 12, completion_tokens: 8 },
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     },
@@ -111,6 +143,7 @@ test('DeepSeek 分析器发送正确请求并返回 facts 与 usage', async () =
 
   const result = await analyzer(matchingSnapshot);
   assert.equal(result.facts.player.x, 1);
+  assert.equal(result.analysis.summary, '当前局面没有怪物');
   assert.equal(result.usage.prompt_tokens, 12);
   assert.equal(calls[0].url, 'https://example.test/v1/chat/completions');
   assert.equal(calls[0].options.headers.Authorization, 'Bearer test-key');
@@ -127,7 +160,7 @@ test('DeepSeek 余额不足返回明确错误', async () => {
   });
 
   await assert.rejects(
-    () => analyzer({}),
+    () => analyzer(matchingSnapshot),
     (error) => error.code === 'DEEPSEEK_BALANCE_REQUIRED' && error.status === 402,
   );
 });

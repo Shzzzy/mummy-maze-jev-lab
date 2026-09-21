@@ -80,7 +80,7 @@ export function createDecisionHandler({
       const snapshot = request.body;
       const legalDirections = getLegalDirections(snapshot);
       const analysis = await analyze(snapshot);
-      const jevPayload = buildJevScorePayload(analysis.facts, legalDirections);
+      const jevPayload = buildJevScorePayload(analysis.facts, legalDirections, analysis.analysis);
       const scored = await score(jevPayload, legalDirections);
       const best = selectBestDirection(scored.scores, legalDirections);
 
@@ -91,6 +91,7 @@ export function createDecisionHandler({
         confidence: best.confidence,
         scores: scored.scores,
         facts: analysis.facts,
+        analysis: analysis.analysis,
         rules: jevPayload.state.rules,
         scoringDimensions: jevPayload.state.scoringDimensions,
         analysisUsage: analysis.usage ?? {},
