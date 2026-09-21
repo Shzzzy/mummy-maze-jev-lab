@@ -30,6 +30,7 @@ export function createJevScorer({
     }
 
     let response;
+    let text;
     try {
       response = await fetcher(`${baseUrl.replace(/\/$/, '')}/v1/systemone`, {
         method: 'POST',
@@ -40,14 +41,13 @@ export function createJevScorer({
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(timeoutMs),
       });
+      text = await response.text();
     } catch (error) {
-      if (error.name === 'TimeoutError') {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
         throw createError('JEV_TIMEOUT', 'Jev 响应超时', 504);
       }
       throw error;
     }
-
-    const text = await response.text();
     if (!response.ok) {
       let message = text.slice(0, 500);
       try {

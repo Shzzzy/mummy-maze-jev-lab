@@ -129,6 +129,55 @@ test('DeepSeek 上游错误透传状态和错误码', async () => {
   }
 });
 
+test('DeepSeek 超时映射为 504', async () => {
+  const timeout = new Error('timeout');
+  timeout.name = 'TimeoutError';
+  const server = createApp({
+    decisionHandler: createDecisionHandler({
+      analyze: async () => { throw timeout; },
+      score: async () => scoreResult(),
+    }),
+  }).listen(0);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/decide`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(snapshot()),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 504);
+    assert.equal(body.error, 'DEEPSEEK_TIMEOUT');
+  } finally {
+    server.close();
+  }
+});
+
+test('Jev 评分错误返回明确错误', async () => {
+  const error = new Error('Jev 缺少评分');
+  error.code = 'JEV_INVALID_SCORE';
+  error.status = 502;
+  const server = createApp({
+    decisionHandler: createDecisionHandler({
+      analyze: async () => ({ facts, usage: {} }),
+      score: async () => { throw error; },
+    }),
+  }).listen(0);
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/decide`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(snapshot()),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 502);
+    assert.equal(body.error, 'JEV_INVALID_SCORE');
+  } finally {
+    server.close();
+  }
+});
+
 test('没有合法动作时不调用 Jev 并返回 422', async () => {
   let scoreCalled = false;
   const server = createApp({
@@ -162,6 +211,26 @@ test('没有合法动作时不调用 Jev 并返回 422', async () => {
   } finally {
     server.close();
   }
+});
+
+test('Jev 读取响应超时映射为 JEV_TIMEOUT', async () => {
+  const scorer = createJevScorer({
+    apiKey: 'test-key',
+    fetcher: async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        const error = new Error('timeout');
+        error.name = 'TimeoutError';
+        throw error;
+      },
+    }),
+  });
+
+  await assert.rejects(
+    () => scorer({ questions: {} }, ['right']),
+    (error) => error.code === 'JEV_TIMEOUT' && error.status === 504,
+  );
 });
 
 test('Jev scorer 发送 score 请求并解析响应', async () => {

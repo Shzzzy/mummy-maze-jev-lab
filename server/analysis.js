@@ -1,5 +1,8 @@
 const DEFAULT_BASE_URL = 'https://omnilabs.vibeadmin.cn';
 const DEFAULT_MODEL = 'deepseek-v4-flash';
+const FACT_KEYS = new Set(['player', 'monsters', 'exit', 'doorsOpen', 'adjacentTiles']);
+const POINT_KEYS = new Set(['x', 'y']);
+const MONSTER_KEYS = new Set(['id', 'type', 'x', 'y']);
 const FORBIDDEN_KEYS = new Set([
   'action',
   'actions',
@@ -32,6 +35,8 @@ function hasForbiddenKey(value) {
 function isPoint(value) {
   return value
     && typeof value === 'object'
+    && !Array.isArray(value)
+    && Object.keys(value).every((key) => POINT_KEYS.has(key))
     && Number.isFinite(value.x)
     && Number.isFinite(value.y);
 }
@@ -39,6 +44,9 @@ function isPoint(value) {
 function validateFacts(facts) {
   if (!facts || typeof facts !== 'object' || Array.isArray(facts)) {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 必须是对象');
+  }
+  if (Object.keys(facts).some((key) => !FACT_KEYS.has(key))) {
+    throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 包含额外字段');
   }
   if (hasForbiddenKey(facts)) {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 包含动作相关字段');
@@ -49,20 +57,107 @@ function validateFacts(facts) {
   if (!Array.isArray(facts.monsters)) {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 缺少 monsters 数组');
   }
+  for (const monster of facts.monsters) {
+    if (!monster || typeof monster !== 'object' || Array.isArray(monster)) {
+      throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek monsters 元素必须是对象');
+    }
+    if (Object.keys(monster).some((key) => !MONSTER_KEYS.has(key))) {
+      throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek monster 包含额外字段');
+    }
+    if (
+      typeof monster.id !== 'string'
+      || typeof monster.type !== 'string'
+      || !Number.isFinite(monster.x)
+      || !Number.isFinite(monster.y)
+    ) {
+      throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek monster 字段非法');
+    }
+  }
   if (facts.exit !== null && !isPoint(facts.exit)) {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 的 exit 非法');
   }
   if (typeof facts.doorsOpen !== 'boolean') {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 缺少 doorsOpen');
   }
-  if (!facts.adjacentTiles || typeof facts.adjacentTiles !== 'object') {
+  if (!facts.adjacentTiles || typeof facts.adjacentTiles !== 'object' || Array.isArray(facts.adjacentTiles)) {
     throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek facts 缺少 adjacentTiles');
+  }
+  const adjacentKeys = Object.keys(facts.adjacentTiles);
+  if (
+    adjacentKeys.length !== 4
+    || adjacentKeys.some((direction) => !['up', 'down', 'left', 'right'].includes(direction))
+  ) {
+    throw createError('DEEPSEEK_INVALID_FACTS', 'DeepSeek adjacentTiles 字段非法');
   }
   for (const direction of ['up', 'down', 'left', 'right']) {
     if (typeof facts.adjacentTiles[direction] !== 'string') {
       throw createError('DEEPSEEK_INVALID_FACTS', `DeepSeek facts 缺少 ${direction} 相邻格`);
     }
   }
+  return facts;
+}
+
+
+function tileAt(snapshot, x, y) {
+  if (x < 0 || y < 0 || y >= snapshot.tiles.length || x >= snapshot.tiles[0].length) {
+    return 'wall';
+  }
+  return snapshot.tiles[y][x];
+}
+
+function findExit(snapshot) {
+  for (let y = 0; y < snapshot.tiles.length; y += 1) {
+    for (let x = 0; x < snapshot.tiles[y].length; x += 1) {
+      if (snapshot.tiles[y][x] === 'exit') return { x, y };
+    }
+  }
+  return null;
+}
+
+export function validateFactsAgainstSnapshot(facts, snapshot) {
+  if (!snapshot || !snapshot.player || !Array.isArray(snapshot.tiles)) {
+    throw createError('INVALID_SNAPSHOT', '缺少合法游戏快照', 422);
+  }
+  if (facts.player.x !== snapshot.player.x || facts.player.y !== snapshot.player.y) {
+    throw createError('DEEPSEEK_FACTS_MISMATCH', 'DeepSeek player 与快照不一致');
+  }
+  if (facts.doorsOpen !== Boolean(snapshot.doorsOpen)) {
+    throw createError('DEEPSEEK_FACTS_MISMATCH', 'DeepSeek doorsOpen 与快照不一致');
+  }
+
+  const exit = findExit(snapshot);
+  if (exit === null) {
+    if (facts.exit !== null) {
+      throw createError('DEEPSEEK_FACTS_MISMATCH', 'DeepSeek exit 与快照不一致');
+    }
+  } else if (!facts.exit || facts.exit.x !== exit.x || facts.exit.y !== exit.y) {
+    throw createError('DEEPSEEK_FACTS_MISMATCH', 'DeepSeek exit 与快照不一致');
+  }
+
+  const monsters = snapshot.monsters ?? [];
+  if (facts.monsters.length !== monsters.length) {
+    throw createError('DEEPSEEK_FACTS_MISMATCH', 'DeepSeek monsters 数量与快照不一致');
+  }
+  for (const monster of monsters) {
+    const item = facts.monsters.find((candidate) => candidate.id === monster.id);
+    if (!item || item.type !== monster.type || item.x !== monster.x || item.y !== monster.y) {
+      throw createError('DEEPSEEK_FACTS_MISMATCH', `DeepSeek ${monster.id} 与快照不一致`);
+    }
+  }
+
+  const vectors = {
+    up: { x: 0, y: -1 },
+    down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 },
+  };
+  for (const [direction, vector] of Object.entries(vectors)) {
+    const expected = tileAt(snapshot, snapshot.player.x + vector.x, snapshot.player.y + vector.y);
+    if (facts.adjacentTiles[direction] !== expected) {
+      throw createError('DEEPSEEK_FACTS_MISMATCH', `DeepSeek ${direction} 相邻格与快照不一致`);
+    }
+  }
+
   return facts;
 }
 
@@ -102,7 +197,6 @@ export function buildDeepSeekMessages(snapshot) {
               left: 'floor|wall|exit|trap|key|gate',
               right: 'floor|wall|exit|trap|key|gate',
             },
-            observations: ['只允许客观描述，不得包含动作建议'],
           },
         },
         snapshot,
@@ -172,7 +266,7 @@ export function createDeepSeekAnalyzer({
     }
 
     const content = body.choices?.[0]?.message?.content;
-    const facts = parseDeepSeekFacts(content);
+    const facts = validateFactsAgainstSnapshot(parseDeepSeekFacts(content), snapshot);
     return {
       facts,
       model: body.model || model,

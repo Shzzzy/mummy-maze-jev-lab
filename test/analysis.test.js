@@ -4,7 +4,20 @@ import {
   buildDeepSeekMessages,
   createDeepSeekAnalyzer,
   parseDeepSeekFacts,
+  validateFactsAgainstSnapshot,
 } from '../server/analysis.js';
+
+const matchingSnapshot = {
+  player: { x: 1, y: 2 },
+  monsters: [{ id: 'white-1', type: 'white', x: 3, y: 2 }],
+  doorsOpen: false,
+  tiles: [
+    ['wall', 'wall', 'wall', 'wall', 'wall', 'wall'],
+    ['wall', 'floor', 'floor', 'floor', 'floor', 'wall'],
+    ['floor', 'floor', 'trap', 'floor', 'floor', 'exit'],
+    ['wall', 'wall', 'wall', 'wall', 'wall', 'wall'],
+  ],
+};
 
 const validFacts = {
   player: { x: 1, y: 2 },
@@ -17,7 +30,6 @@ const validFacts = {
     left: 'floor',
     right: 'trap',
   },
-  observations: ['玩家与白木乃伊在同一水平线上'],
 };
 
 test('DeepSeek 提示词包含快照并要求只输出中性事实', () => {
@@ -37,6 +49,20 @@ test('解析 DeepSeek 返回的合法事实 JSON', () => {
   assert.deepEqual(facts, validFacts);
 });
 
+test('事实与快照一致时通过', () => {
+  assert.deepEqual(validateFactsAgainstSnapshot(validFacts, matchingSnapshot), validFacts);
+});
+
+test('拒绝与快照不一致的事实', () => {
+  assert.throws(
+    () => validateFactsAgainstSnapshot({
+      ...validFacts,
+      player: { x: 2, y: 2 },
+    }, matchingSnapshot),
+    (error) => error.code === 'DEEPSEEK_FACTS_MISMATCH',
+  );
+});
+
 test('解析时可剥离 JSON 代码块', () => {
   const facts = parseDeepSeekFacts(`\`\`\`json\n${JSON.stringify({ facts: validFacts })}\n\`\`\``);
   assert.equal(facts.player.x, 1);
@@ -46,6 +72,15 @@ test('拒绝包含方向建议的事实', () => {
   assert.throws(
     () => parseDeepSeekFacts(JSON.stringify({
       facts: { ...validFacts, recommendedAction: 'up' },
+    })),
+    (error) => error.code === 'DEEPSEEK_INVALID_FACTS',
+  );
+});
+
+test('拒绝额外自由文本字段', () => {
+  assert.throws(
+    () => parseDeepSeekFacts(JSON.stringify({
+      facts: { ...validFacts, observations: ['应该向左走'] },
     })),
     (error) => error.code === 'DEEPSEEK_INVALID_FACTS',
   );
@@ -74,7 +109,7 @@ test('DeepSeek 分析器发送正确请求并返回 facts 与 usage', async () =
     },
   });
 
-  const result = await analyzer({ levelId: 'level-1' });
+  const result = await analyzer(matchingSnapshot);
   assert.equal(result.facts.player.x, 1);
   assert.equal(result.usage.prompt_tokens, 12);
   assert.equal(calls[0].url, 'https://example.test/v1/chat/completions');
