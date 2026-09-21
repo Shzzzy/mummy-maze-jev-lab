@@ -169,6 +169,3 @@ for (const config of configs.filter((item) => !requestedLevel || item.name === r
   }
   console.log(JSON.stringify({ config, best }, null, 2));
 }
-
-
-
