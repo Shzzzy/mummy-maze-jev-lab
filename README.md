@@ -13,7 +13,9 @@
 ```text
 OMNILABS_API_KEY=你的本地测试密钥
 OMNILABS_BASE_URL=https://omnilabs.vibeadmin.cn
-DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_API_KEY=你的 DeepSeek API Key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
 ```
 
 4. 执行 `npm start`。
@@ -26,7 +28,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 - Jev 对每个合法方向分别评分并返回置信度。
 - 代码在合法动作中选择最高分方向并执行。
 
-DeepSeek 通过 OmniLabs 调用时需要有可用余额；Jev 调用免费。
+DeepSeek 调用需要有效的 DeepSeek API Key 和余额；Jev 调用免费。
 
 ### 操作
 

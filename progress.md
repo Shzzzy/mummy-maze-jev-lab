@@ -9,6 +9,9 @@ Original prompt: 调用 develop-web-game技能优化下游戏
 - 已新增全屏切换：`f` 进入或退出全屏，`Esc` 退出。
 - 已新增窄屏单列布局和全屏时隐藏侧栏的样式。
 - 已新增 favicon，消除浏览器 favicon 404。
+- 已将 DeepSeek API Key 写入本地 `.env`，`.env` 仍被 Git 忽略。
+- 已让代码优先读取 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL`。
+- 已直接调用 DeepSeek 官方接口验证成功，简单 3x3 局面可以返回合法 facts。
 
 ## Playwright 验证
 
@@ -18,8 +21,13 @@ Original prompt: 调用 develop-web-game技能优化下游戏
 - 最新截图：`shot-0.png`、`shot-1.png`。
 - console error：已清零。
 
+## 待解决问题
+
+- 使用真实 7x7 关卡快照时，DeepSeek 对 `tiles` 数组的读取出现偏差，导致 `exit` 和相邻格 facts 与代码快照不一致。
+- 下一步建议：让代码直接生成确定性 facts，DeepSeek 只在 facts 上做中性聚焦分析；或者给 DeepSeek 提供更易读的 ASCII 棋盘和坐标表。
+- Jev 上游此前出现过 503，需要在恢复后重新验证完整 AI 链路。
+
 ## 后续 TODO
 
-- 在可用的 DeepSeek 余额和 Jev 上游恢复后，重新验证 AI 自动模式的完整链路。
 - 增加胜利、失败、重试和关卡自动推进的 Playwright 场景。
 - 如果继续做体验优化，可考虑增加关卡开始提示、音效开关和移动端触控方向键。

@@ -1,5 +1,5 @@
-const DEFAULT_BASE_URL = 'https://omnilabs.vibeadmin.cn';
-const DEFAULT_MODEL = 'deepseek-v4-flash';
+const DEFAULT_BASE_URL = 'https://api.deepseek.com';
+const DEFAULT_MODEL = 'deepseek-chat';
 const FACT_KEYS = new Set(['player', 'monsters', 'exit', 'doorsOpen', 'adjacentTiles']);
 const POINT_KEYS = new Set(['x', 'y']);
 const MONSTER_KEYS = new Set(['id', 'type', 'x', 'y']);
@@ -217,14 +217,14 @@ export function parseDeepSeekFacts(content) {
 
 export function createDeepSeekAnalyzer({
   fetcher = fetch,
-  apiKey = process.env.OMNILABS_API_KEY,
-  baseUrl = process.env.OMNILABS_BASE_URL || DEFAULT_BASE_URL,
+  apiKey = process.env.DEEPSEEK_API_KEY || process.env.OMNILABS_API_KEY,
+  baseUrl = process.env.DEEPSEEK_BASE_URL || process.env.OMNILABS_BASE_URL || DEFAULT_BASE_URL,
   model = process.env.DEEPSEEK_MODEL || DEFAULT_MODEL,
   timeoutMs = Number(process.env.DEEPSEEK_TIMEOUT_MS || 20_000),
 } = {}) {
   return async (snapshot) => {
     if (!apiKey) {
-      throw createError('DEEPSEEK_NOT_CONFIGURED', '缺少 OMNILABS_API_KEY', 503);
+      throw createError('DEEPSEEK_NOT_CONFIGURED', '缺少 DEEPSEEK_API_KEY', 503);
     }
 
     const response = await fetcher(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
